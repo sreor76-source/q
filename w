@@ -1,269 +1,351 @@
+-- KillCam Skin (War Tycoon) + واجهة
+-- يبدل صورة القاتل في شاشة "KILLED BY" لصورة السكن (يعتمد على الأحداث مو فحص مستمر)
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local LP = Players.LocalPlayer
 
+local DEBUG = false -- خله true لو تبي يطبع أسماء الصور في الكونسول (F9)
 
-    textBox.Position = UDim2.new(0.05, 0, 0, posY + 20)
-    textBox.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
-    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    textBox.PlaceholderText = placeholder
-    textBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
-    textBox.Text = ""
-    textBox.TextSize = 12
-    textBox.Font = Enum.Font.Gotham
-    textBox.ClearTextOnFocus 
-ListLabel.TextXAlignment = Enum.TextXAlignment.Right
-ListLabel.Parent = PageSkins
+---------------------------------------------------------------------
+-- الحالة
+---------------------------------------------------------------------
+local State = { id = 7919170386, enabled = true }
 
-local PlayerList = Instance.new("ScrollingFrame")
-PlayerList.Size = UDim2.new(.9, 0, 0, 150)
-PlayerList.Position = UDim2.new(0.05, 0, 0
-                if b:IsA("TextButton") then b.BackgroundColor3 = Color3.fromRGB(35, 35, 42) end
-            end
-            btn.BackgroundColor3 = Color3.fromRGB(120, 40, 200)
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        end)
-    end
+local function imageFor(id)
+	return ("rbxthumb://type=AvatarHeadShot&id=%d&w=420&h=420"):format(id)
 end
 
-UpdatePlayerList()
-Players.PlayerAdded:Connect(UpdatePlayerList)
-Players.PlayerRemoving:Connect(UpdatePlayerList)
+local NEW_IMAGE = imageFor(State.id)
 
-local ApplySkinBtn = Instance.new("TextButton")
-ApplySkinBtn.Size = UDim2.new(0.9, 0, 0, 38)
-ApplySkinBtn.Position = UDim2.new(0.05, 0, 0, 260)
-ApplySkinBtn.Text = "تطبيق السكن على الهدف المحدد"
-ApplySkinBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 200)
-ApplySkinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ApplySkinBtn.Font = Enum.Font.GothamBold
-ApplySkinBtn.TextSize = 12
-ApplySkinBtn.Parent = PageSkins
+local hooked = {}
+local watchedRoots = {}
+local originals = setmetatable({}, { __mode = "k" }) -- الصورة الأصلية قبل التبديل
+local lastSet = setmetatable({}, { __mode = "k" })   -- آخر صورة حطيناها
 
-Instance.new("UICorner", ApplySkinBtn).CornerRadius = UDim.new(0, 6)
+---------------------------------------------------------------------
+-- المنطق الأساسي
+---------------------------------------------------------------------
+local function looksLikeAvatar(img)
+	local s = img:lower()
+	return s:find("rbxthumb", 1, true) or s:find("headshot", 1, true)
+		or s:find("thumbnail", 1, true) or s:find("avatar", 1, true)
+		or s:find("/users/", 1, true) or s:find("userid", 1, true)
+end
 
--- Logic: Apply Skin
-ApplySkinBtn.MouseButton1Click:Connect(function()
-    local targetId = tonumber(UserIdInput.Text)
-    if not targetId then 
-        Title.Text = "خطأ: أدخل الـ ID بشكل صحيح!" 
-        return 
-    end
-    if not selectedPlayer or not selectedPlayer.Character then 
-        Title.Text = "خطأ: اختر لاعباً من القائمة أولاً!" 
-        return 
-    end
-    
-    Title.Text = "جاري تعديل السكن للهدف..."
-    
-    task.spawn(function()
-        local char = selectedPlayer.Character
-        if not char then return end
-        
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
-        
-        if not humanoid or not torso then return end
-        
-        local success, dummyModel = pcall(function()
-            local desc = Players:GetHumanoidDescriptionFromUserId(targetId)
-            return Players:CreateHumanoidModelFromDescription(desc, humanoid.RigType)
-        end)
-        
-        if success and dummyModel then
-            for _, item in pairs(char:GetChildren()) do
-                if item:IsA("Accessory") or item:IsA("Shirt") or item:IsA("Pants") or item:IsA("ShirtGraphic") or item:IsA("BodyColors") then
-                    item:Destroy()
-                end
-            end
-            
-            for _, item in pairs(dummyModel:GetChildren()) do
-                if item:IsA("BodyColors") or item:IsA("Shirt") or item:IsA("Pants") or item:IsA("ShirtGraphic") then
-                    item:Clone().Parent = char
-                end
-            end
-            
-            local dummyHead = dummyModel:FindFirstChild("Head")
-            local targetHead = char:FindFirstChild("Head")
-            
-            if dummyHead and targetHead then
-                for _, child in pairs(targetHead:GetChildren()) do
-                    if not child:IsA("BillboardGui") and not child:IsA("Folder") and child.Name ~= "HumanoidDisplay" then
-                        child:Destroy()
-                    end
-                end
-                
-                for _, child in pairs(dummyHead:GetChildren()) do
-                    child:Clone().Parent = targetHead
-                end
-                
-                targetHead.Color = dummyHead.Color
-                targetHead.Material = dummyHead.Material
-                
-                if dummyHead:IsA("MeshPart") and targetHead:IsA("MeshPart") then
-                    targetHead.MeshId = dummyHead.MeshId
-                    targetHead.TextureID = dummyHead.TextureID
-                    targetHead.Size = dummyHead.Size
-                end
-            end
-            
-            for _, item in pairs(dummyModel:GetChildren()) do
-                if item:IsA("Accessory") then
-                    local cloneAcc = item:Clone()
-                    local handle = cloneAcc:FindFirstChild("Handle")
-                    if handle then
-                        for _, w in pairs(handle:GetChildren()) do
-                            if w:IsA("JointInstance") then w:Destroy() end
-                        end
-                        cloneAcc.Parent = char
-                        
-                        local accAtt = handle:FindFirstChildOfClass("Attachment")
-                        local targetAttPart = targetHead
-                        local targetAtt = targetHead and targetHead:FindFirstChild("HatAttachment")
-                        
-                        if accAtt then
-                            for _, part in pairs(char:GetChildren()) do
-                                if part:IsA("BasePart") then
-                                    local foundAtt = part:FindFirstChild(accAtt.Name)
-                                    if foundAtt and foundAtt:IsA("Attachment") then
-                                        targetAttPart = part
-                                        targetAtt = foundAtt
-                                        break
-                                    end
-                                end
-                            end
-                        end
-                        
-                        if targetAttPart and targetAtt then
-                            local tCFrame = targetAtt.CFrame
-                            local aCFrame = accAtt.CFrame
-                            handle.CFrame = targetAttPart.CFrame * tCFrame * aCFrame:Inverse()
-                            
-                            local weld = Instance.new("WeldConstraint")
-                            weld.Part0 = targetAttPart
-                            weld.Part1 = handle
-                            weld.Parent = handle
-                        end
-                    end
-                end
-            end
-            
-            dummyModel:Destroy()
-            Title.Text = "تم تغيير السكن بنجاح!"
-        else
-            Title.Text = "فشل جلب الـ ID!"
-        end
-        
-        task.wait(3)
-        Title.Text = selectedPlayer and ("الهدف المحدد: " .. selectedPlayer.Name) or "لوحة التحكم (L: كاش+إخفاء | K: إخفاء فقط)"
-    end)
+local function setImage(img, value)
+	if img.Image ~= lastSet[img] then
+		originals[img] = img.Image
+	end
+	lastSet[img] = value
+	img.Image = value
+end
+
+local function fix(img)
+	if not State.enabled then return end
+	if img.Image ~= NEW_IMAGE and looksLikeAvatar(img.Image) then
+		setImage(img, NEW_IMAGE)
+	end
+end
+
+local function hookImage(img)
+	if hooked[img] then return end
+	hooked[img] = true
+	if DEBUG then print("IMG", img:GetFullName(), "|", img.Image) end
+	fix(img)
+	img:GetPropertyChangedSignal("Image"):Connect(function() fix(img) end)
+end
+
+-- احتياطي: إذا ما لقى صورة بالاسم، يبدل أكبر صورة مربعة (صورة القاتل)
+local function fallback(root)
+	if not State.enabled then return end
+	if not root.Parent then return end
+	local best, area = nil, 0
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("ImageLabel") or d:IsA("ImageButton") then
+			if d.Image == NEW_IMAGE then return end -- انبدلت خلاص
+			local sz = d.AbsoluteSize
+			if sz.X > 0 and sz.Y > 0 then
+				local ratio = sz.X / sz.Y
+				if ratio > 0.85 and ratio < 1.15 and sz.X * sz.Y > area then
+					best, area = d, sz.X * sz.Y
+				end
+			end
+		end
+	end
+	if best then setImage(best, NEW_IMAGE) end
+end
+
+local function scheduleFallback(root)
+	task.delay(0.3, fallback, root)
+	task.delay(1, fallback, root)
+end
+
+local function watchRoot(root)
+	if watchedRoots[root] then return end
+	watchedRoots[root] = true
+
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("ImageLabel") or d:IsA("ImageButton") then hookImage(d) end
+	end
+
+	root.DescendantAdded:Connect(function(d)
+		if d:IsA("ImageLabel") or d:IsA("ImageButton") then
+			task.defer(hookImage, d)
+		end
+	end)
+
+	-- إذا الواجهة مخفية وتظهر كل مرة تموت
+	root:GetPropertyChangedSignal("Enabled"):Connect(function()
+		if root.Enabled then scheduleFallback(root) end
+	end)
+
+	scheduleFallback(root)
+end
+
+local function isKilledByLabel(o)
+	return o:IsA("TextLabel") and o.Text:upper():find("KILLED BY", 1, true) ~= nil
+end
+
+local function checkLabel(o)
+	if isKilledByLabel(o) then
+		local root = o:FindFirstAncestorOfClass("ScreenGui")
+		if root then pcall(watchRoot, root) end
+	end
+end
+
+local pg = LP:WaitForChild("PlayerGui")
+
+-- فحص واحد فقط عند التشغيل
+for _, o in ipairs(pg:GetDescendants()) do
+	if o:IsA("TextLabel") then checkLabel(o) end
+end
+
+-- وبعدها نراقب بس العناصر الجديدة
+pg.DescendantAdded:Connect(function(o)
+	if o:IsA("TextLabel") then
+		task.defer(checkLabel, o)
+	end
 end)
 
--- Logic: Apply Name (War Tycoon)
-ApplyNameBtn.MouseButton1Click:Connect(function()
-    local targetNameQuery = targetInput.Text:lower()
-    if targetNameQuery == "" then 
-        Title.Text = "خطأ: اكتب اسم اللاعب المستهدف أولاً!"
-        return 
-    end
-    
-    local foundPlayer = nil
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Name:lower():find(targetNameQuery) or (p.DisplayName and p.DisplayName:lower():find(targetNameQuery)) then
-            foundPlayer = p
-            break
-        end
-    end
-    
-    if not foundPlayer then 
-        Title.Text = "خطأ: لم يتم العثور على اللاعب المطلوب!"
-        return 
-    end
-    
-    local character = foundPlayer.Character
-    if not character then 
-        Title.Text = "خطأ: شخصية اللاعب غير موجودة!"
-        return 
-    end
-    
-    local head = character:FindFirstChild("Head")
-    if not head then 
-        Title.Text = "خطأ: رأس اللاعب غير موجود!"
-        return 
-    end
-    
-    local foundGui = false
-    for _, gui in ipairs(head:GetChildren()) do
-        if gui:IsA("BillboardGui") then
-            local labels = {}
-            for _, descendant in ipairs(gui:GetDescendants()) do
-                if descendant:IsA("TextLabel") and descendant.Visible and descendant.Text ~= "" then
-                    table.insert(labels, descendant)
-                end
-            end
-            
-            table.sort(labels, function(a, b)
-                return a.AbsolutePosition.Y < b.AbsolutePosition.Y
-            end)
-            
-            if #labels >= 1 and rankInput.Text ~= "" then
-                labels[1].Text = rankInput.Text
-            end
-            if #labels >= 2 and nameInput.Text ~= "" then
-                labels[2].Text = nameInput.Text
-            end
-            if #labels >= 3 and userInput.Text ~= "" then
-                labels[3].Text = userInput.Text
-            end
-            
-            foundGui = true
-            Title.Text = "تم تعديل اسم ونقاط " .. foundPlayer.Name .. " بنجاح!"
-            task.wait(3)
-            Title.Text = "لوحة التحكم (L: كاش+إخفاء | K: إخفاء فقط)"
-            break
-        end
-    end
-    
-    if not foundGui then
-        Title.Text = "خطأ: لم يتم العثور على النيم تاق الخاص بالهدف!"
-    end
+---------------------------------------------------------------------
+-- دوال التحكم للواجهة
+---------------------------------------------------------------------
+local function refreshAll()
+	for img in pairs(hooked) do
+		if img.Parent then fix(img) end
+	end
+	for root in pairs(watchedRoots) do
+		if root.Parent and root.Enabled then scheduleFallback(root) end
+	end
+end
+
+local function restoreAll()
+	for img, orig in pairs(originals) do
+		if img.Parent and img.Image == lastSet[img] then
+			img.Image = orig
+		end
+	end
+end
+
+local function resolveUserId(text)
+	text = (text or ""):gsub("%s+", "")
+	if text == "" then return nil end
+	local n = tonumber(text)
+	if n then return math.floor(n) end
+	local ok, id = pcall(Players.GetUserIdFromNameAsync, Players, text)
+	if ok then return id end
+end
+
+---------------------------------------------------------------------
+-- الواجهة
+---------------------------------------------------------------------
+local DEFAULT_TITLE = "صورة القاتل (KILLED BY)"
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "KillCamSkinGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local parented = false
+pcall(function()
+	if gethui then ScreenGui.Parent = gethui() parented = true end
+end)
+if not parented then
+	parented = pcall(function() ScreenGui.Parent = game:GetService("CoreGui") end)
+end
+if not parented or not ScreenGui.Parent then
+	ScreenGui.Parent = pg
+end
+
+local function corner(obj, r)
+	Instance.new("UICorner", obj).CornerRadius = UDim.new(0, r)
+end
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 260, 0, 200)
+MainFrame.Position = UDim2.new(0.5, -130, 0.4, -100)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+MainFrame.BorderSizePixel = 2
+MainFrame.BorderColor3 = Color3.fromRGB(150, 50, 255)
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+corner(MainFrame, 8)
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -70, 0, 35)
+Title.Text = DEFAULT_TITLE
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 12
+Title.TextWrapped = true
+Title.Parent = MainFrame
+
+local IdInput = Instance.new("TextBox")
+IdInput.Size = UDim2.new(0.9, 0, 0, 38)
+IdInput.Position = UDim2.new(0.05, 0, 0, 50)
+IdInput.PlaceholderText = "ID أو اسم الشخص..."
+IdInput.Text = tostring(State.id)
+IdInput.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+IdInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+IdInput.PlaceholderColor3 = Color3.fromRGB(150, 150, 160)
+IdInput.Font = Enum.Font.Gotham
+IdInput.TextSize = 13
+IdInput.ClearTextOnFocus = false
+IdInput.Parent = MainFrame
+corner(IdInput, 6)
+
+local ApplyBtn = Instance.new("TextButton")
+ApplyBtn.Size = UDim2.new(0.9, 0, 0, 38)
+ApplyBtn.Position = UDim2.new(0.05, 0, 0, 98)
+ApplyBtn.Text = "تطبيق الصورة"
+ApplyBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 200)
+ApplyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ApplyBtn.Font = Enum.Font.GothamBold
+ApplyBtn.TextSize = 13
+ApplyBtn.Parent = MainFrame
+corner(ApplyBtn, 6)
+
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0.9, 0, 0, 38)
+ToggleBtn.Position = UDim2.new(0.05, 0, 0, 146)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 70)
+ToggleBtn.Text = "الحالة: شغّال"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.TextSize = 13
+ToggleBtn.Parent = MainFrame
+corner(ToggleBtn, 6)
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 25, 0, 25)
+CloseBtn.Position = UDim2.new(1, -30, 0, 5)
+CloseBtn.Text = "X"
+CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 12
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Parent = MainFrame
+corner(CloseBtn, 4)
+
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 25, 0, 25)
+MinBtn.Position = UDim2.new(1, -60, 0, 5)
+MinBtn.Text = "-"
+MinBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 85)
+MinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.TextSize = 14
+MinBtn.BorderSizePixel = 0
+MinBtn.Parent = MainFrame
+corner(MinBtn, 4)
+
+local OpenBtn = Instance.new("TextButton")
+OpenBtn.Size = UDim2.new(0, 40, 0, 40)
+OpenBtn.Position = UDim2.new(0, 10, 0.5, 0)
+OpenBtn.Text = "KILL"
+OpenBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 200)
+OpenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+OpenBtn.Font = Enum.Font.GothamBold
+OpenBtn.TextSize = 10
+OpenBtn.Visible = false
+OpenBtn.Active = true
+OpenBtn.Draggable = true
+OpenBtn.Parent = ScreenGui
+corner(OpenBtn, 20)
+
+local function setVisible(v)
+	MainFrame.Visible = v
+	OpenBtn.Visible = not v
+end
+
+local statusToken = 0
+local function setStatus(text, resetAfter)
+	statusToken += 1
+	local my = statusToken
+	Title.Text = text
+	if resetAfter then
+		task.delay(resetAfter, function()
+			if my == statusToken then Title.Text = DEFAULT_TITLE end
+		end)
+	end
+end
+
+local function updateToggleLook()
+	if State.enabled then
+		ToggleBtn.Text = "الحالة: شغّال"
+		ToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 70)
+	else
+		ToggleBtn.Text = "الحالة: متوقف"
+		ToggleBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+	end
+end
+
+MinBtn.MouseButton1Click:Connect(function() setVisible(false) end)
+OpenBtn.MouseButton1Click:Connect(function() setVisible(true) end)
+CloseBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy() end) -- السكربت يبقى شغال
+
+local busy = false
+ApplyBtn.MouseButton1Click:Connect(function()
+	if busy then return end
+	busy = true
+	setStatus("جاري التحقق...")
+	task.spawn(function()
+		local id = resolveUserId(IdInput.Text)
+		if not id then
+			setStatus("خطأ: ID أو اسم غير صحيح!", 3)
+			busy = false
+			return
+		end
+		State.id = id
+		NEW_IMAGE = imageFor(id)
+		State.enabled = true
+		updateToggleLook()
+		refreshAll()
+		setStatus("تم! بتبان الصورة بشاشة القتل", 3)
+		busy = false
+	end)
 end)
 
--- Hotkeys Logic (L & K)
+ToggleBtn.MouseButton1Click:Connect(function()
+	State.enabled = not State.enabled
+	updateToggleLook()
+	if State.enabled then
+		refreshAll()
+		setStatus("تم التشغيل", 2)
+	else
+		restoreAll()
+		setStatus("تم الإيقاف ورجعت الصورة الأصلية", 2)
+	end
+end)
+
 UserInputService.InputBegan:Connect(function(input, isTyping)
-    if isTyping then return end
-    
-    -- حرف K: إخفاء أو إظهار الواجهة فقط بدون تشغيل السكربت
-    if input.KeyCode == Enum.KeyCode.K then
-        MainFrame.Visible = not MainFrame.Visible
-        
-    -- حرف L: إخفاء أو إظهار الواجهة + تشغيل سكربت الكاش والريموتات
-    elseif input.KeyCode == Enum.KeyCode.L then
-        MainFrame.Visible = not MainFrame.Visible
-        
-        local stats = LocalPlayer:FindFirstChild("leaderstats")
-        local cash = stats and stats:FindFirstChild("Cash")
-        
-        local remoteFolder = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes") or game:GetService("ReplicatedStorage")
-
-        for _, remote in pairs(remoteFolder:GetDescendants()) do
-            if remote:IsA("RemoteEvent") then
-                local name = remote.Name:lower()
-                if name:find("collect") or name:find("add") or name:find("cash") then
-                    print("Targeting: " .. remote.Name)
-                    remote:FireServer(999999999)
-                    remote:FireServer(true)
-                end
-            end
-        end
-
-        if cash then
-            cash.Value = 999999999
-            if not cash:FindFirstChild("CashConnection") then
-                local conn = cash:GetPropertyChangedSignal("Value"):Connect(function()
-                    cash.Value = 999999999
-                end)
-                conn.Name = "CashConnection"
-            end
-        end
-
-        print("Cash script executed via 'L'.")
-    end
+	if isTyping then return end
+	if input.KeyCode == Enum.KeyCode.L then
+		setVisible(not MainFrame.Visible)
+	end
 end)
+
+print("[killcam_skin] شغّال")
